@@ -133,7 +133,7 @@ def main():
     bd_criterion = BondaryLoss()
     
     model = FullModel(model, sem_criterion, bd_criterion)
-    # model = nn.DataParallel(model, device_ids=gpus)
+    model = nn.DataParallel(model, device_ids=gpus)
     model= model.cuda()
 
     print(model)

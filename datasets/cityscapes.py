@@ -57,28 +57,30 @@ class Cityscapes(BaseDataset):
         self.bd_dilate_size = bd_dilate_size
     
     def read_files(self):
-        image_dir = os.path.join(root_dir, 'images')
-        mask_dir = os.path.join(root_dir, 'masks')
-        image_filenames = os.listdir(image_dir)
 
-        val_image_dir = os.path.join(val_root_dir, 'images')
-        val_mask_dir = os.path.join(val_root_dir, 'masks')
-        
 
         files = []
-        if 'test' in self.list_path:
+        
+        if 'train' in self.list_path:
             root_dir="../Dataset/VineNet"
+            image_dir = os.path.join(root_dir, 'images')
+            mask_dir = os.path.join(root_dir, 'masks')
+            image_filenames = os.listdir(image_dir)
             for image_name in image_filenames:
                 image_path = os.path.join(image_dir, image_name)
                 mask_path = os.path.join(mask_dir, image_name.replace('.png', '_instanceIds.png'))
                 name = os.path.splitext(os.path.basename(image_path))[0]
                 files.append({
                     "img": image_path,
-                    "name": name
+                    "name": name,
+                    "label": mask_path
                 })
 
         else:
             root_dir="../ValDataset/VineNet"
+            image_dir = os.path.join(root_dir, 'images')
+            mask_dir = os.path.join(root_dir, 'masks')
+            image_filenames = os.listdir(image_dir)
             for image_name in image_filenames:
                 image_path = os.path.join(image_dir, image_name)
                 mask_path = os.path.join(mask_dir, image_name.replace('.png', '_instanceIds.png'))
