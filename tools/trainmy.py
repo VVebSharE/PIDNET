@@ -26,14 +26,13 @@ from utils.criterion import CrossEntropy, OhemCrossEntropy, BondaryLoss
 from utils.function import train, validate
 from utils.utils import create_logger, FullModel
 
-device = torch.device("cuda:3") 
-torch.cuda.set_device(device)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train segmentation network')
     
     parser.add_argument('--cfg',
                         help='experiment configure file name',
+                        # default="configs/cityscapes/pidnet_small_cityscapes.yaml",
                         default="../configs/cityscapes/pidnet_small_cityscapes.yaml",
                         type=str)
     parser.add_argument('--seed', type=int, default=304)    
@@ -46,6 +45,7 @@ def parse_args():
     update_config(config, args)
 
     return args
+
 
 def main():
     args = parse_args()
@@ -72,14 +72,19 @@ def main():
     cudnn.benchmark = config.CUDNN.BENCHMARK
     cudnn.deterministic = config.CUDNN.DETERMINISTIC
     cudnn.enabled = config.CUDNN.ENABLED
-    
-    gpus = [3]  # Use only the first GPU
+    gpus = list(config.GPUS)
+    gpus=[0,1,2,3,4,5,6,7]
+    # if torch.cuda.device_count() != len(gpus):
+    #     print("The gpu numbers do not match!")
+    #     return 0
     
     imgnet = 'imagenet' in config.MODEL.PRETRAINED
-    model = models.pidnet.get_seg_model(config, imgnet_pretrained=imgnet).cuda()
+    model = models.pidnet.get_seg_model(config, imgnet_pretrained=imgnet)
 
-    batch_size = config.TRAIN.BATCH_SIZE_PER_GPU
 
+
+ 
+    batch_size = config.TRAIN.BATCH_SIZE_PER_GPU * len(gpus)
     # prepare data
     crop_size = (config.TRAIN.IMAGE_SIZE[1], config.TRAIN.IMAGE_SIZE[0])
     train_dataset = eval('datasets.'+config.DATASET.DATASET)(
@@ -92,6 +97,9 @@ def main():
                         base_size=config.TRAIN.BASE_SIZE,
                         crop_size=crop_size,
                         scale_factor=config.TRAIN.SCALE_FACTOR)
+    
+
+
 
     trainloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -101,6 +109,7 @@ def main():
         pin_memory=False,
         drop_last=True)
 
+    
 
     test_size = (config.TEST.IMAGE_SIZE[1], config.TEST.IMAGE_SIZE[0])
     test_dataset = eval('datasets.'+config.DATASET.DATASET)(
@@ -115,10 +124,11 @@ def main():
 
     testloader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=config.TEST.BATCH_SIZE_PER_GPU,
+        batch_size=config.TEST.BATCH_SIZE_PER_GPU * len(gpus),
         shuffle=False,
         num_workers=config.WORKERS,
         pin_memory=False)
+    
 
     # criterion
     if config.LOSS.USE_OHEM:
@@ -133,18 +143,26 @@ def main():
     bd_criterion = BondaryLoss()
     
     model = FullModel(model, sem_criterion, bd_criterion)
-    # model = nn.DataParallel(model, device_ids=gpus)
-    model= model.cuda()
+    model = nn.DataParallel(model, device_ids=gpus).cuda()
+    # model=model.cuda()
 
     print(model)
 
-    optimizer = torch.optim.SGD(model.parameters(),
+    # optimizer
+    if config.TRAIN.OPTIMIZER == 'sgd':
+        params_dict = dict(model.named_parameters())
+        params = [{'params': list(params_dict.values()), 'lr': config.TRAIN.LR}]
+
+        optimizer = torch.optim.SGD(params,
                                 lr=config.TRAIN.LR,
                                 momentum=config.TRAIN.MOMENTUM,
                                 weight_decay=config.TRAIN.WD,
-                                nesterov=config.TRAIN.NESTEROV)
+                                nesterov=config.TRAIN.NESTEROV,
+                                )
+    else:
+        raise ValueError('Only Support SGD optimizer')
 
-    epoch_iters = int(train_dataset.__len__() / config.TRAIN.BATCH_SIZE_PER_GPU)
+    epoch_iters = int(train_dataset.__len__() / config.TRAIN.BATCH_SIZE_PER_GPU / len(gpus))
         
     best_mIoU = 0
     last_epoch = 0
@@ -152,7 +170,7 @@ def main():
     if config.TRAIN.RESUME:
         model_state_file = os.path.join(final_output_dir, 'checkpoint.pth.tar')
         if os.path.isfile(model_state_file):
-            checkpoint = torch.load(model_state_file, map_location='cpu')
+            checkpoint = torch.load(model_state_file, map_location={'cuda:0': 'cpu'})
             best_mIoU = checkpoint['best_mIoU']
             last_epoch = checkpoint['epoch']
             dct = checkpoint['state_dict']
@@ -173,12 +191,12 @@ def main():
             current_trainloader.sampler.set_epoch(epoch)
 
         train(config, epoch, config.TRAIN.END_EPOCH, 
-              epoch_iters, config.TRAIN.LR, num_iters,
-              trainloader, optimizer, model, writer_dict)
+                  epoch_iters, config.TRAIN.LR, num_iters,
+                  trainloader, optimizer, model, writer_dict)
 
         if flag_rm == 1 or (epoch % 5 == 0 and epoch < real_end - 100) or (epoch >= real_end - 100):
             valid_loss, mean_IoU, IoU_array = validate(config, 
-                                                        testloader, model, writer_dict)
+                        testloader, model, writer_dict)
         if flag_rm == 1:
             flag_rm = 0
 
@@ -193,21 +211,21 @@ def main():
         if mean_IoU > best_mIoU:
             best_mIoU = mean_IoU
             torch.save(model.module.state_dict(),
-                       os.path.join(final_output_dir, 'best.pt'))
+                    os.path.join(final_output_dir, 'best.pt'))
         msg = 'Loss: {:.3f}, MeanIU: {: 4.4f}, Best_mIoU: {: 4.4f}'.format(
                     valid_loss, mean_IoU, best_mIoU)
         logging.info(msg)
         logging.info(IoU_array)
 
+
+
     torch.save(model.module.state_dict(),
-               os.path.join(final_output_dir, 'final_state.pt'))
+            os.path.join(final_output_dir, 'final_state.pt'))
 
     writer_dict['writer'].close()
     end = timeit.default_timer()
     logger.info('Hours: %d' % np.int32((end-start)/3600))
     logger.info('Done')
-
-
 
 if __name__ == '__main__':
     main()
