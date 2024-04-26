@@ -61,14 +61,26 @@ class OhemCrossEntropy(nn.Module):
         return loss
 
     def _ohem_forward(self, score, target, **kwargs):
+        # print("vveblog:",score.shape,target.shape)
+
 
         pred = F.softmax(score, dim=1)
         pixel_losses = self.criterion(score, target).contiguous().view(-1)
+
         mask = target.contiguous().view(-1) != self.ignore_label
+        # print("Score shape:", score.shape) # torch.Size([6, 2, 1024, 1024])
+        # print("Target shape:", target.shape) #torch.Size([6, 1024, 1024])
+        # print("Mask shape:", mask.shape) #torch.Size([6291456])
+        # print("Unique values in mask:", torch.unique(mask)) #tensor([True], device='cuda:0')
+        # print("Unique values in target:", torch.unique(target)) # tensor([  0, 128], device='cuda:0')
 
         tmp_target = target.clone()
         tmp_target[tmp_target == self.ignore_label] = 0
         pred = pred.gather(1, tmp_target.unsqueeze(1))
+
+        # print("unique value in pred",torch.unique(pred))
+
+        # print("pred:",pred.shape)
         pred, ind = pred.contiguous().view(-1,)[mask].contiguous().sort()
         min_value = pred[min(self.min_kept, pred.numel() - 1)]
         threshold = max(min_value, self.thresh)
@@ -78,12 +90,21 @@ class OhemCrossEntropy(nn.Module):
         return pixel_losses.mean()
 
     def forward(self, score, target):
+
+        # print("vveblog")
+        # print("score",[i.shape for i in score])
+        # print("target",target.shape)
+
+        # target has values 0 and 128 , replace 128 by 1
+        target[target == 128] = 1
         
         if not (isinstance(score, list) or isinstance(score, tuple)):
             score = [score]
 
         balance_weights = config.LOSS.BALANCE_WEIGHTS
         sb_weights = config.LOSS.SB_WEIGHTS
+        # return self._ce_forward(score,target)
+
         if len(balance_weights) == len(score):
             functions = [self._ce_forward] * \
                 (len(balance_weights) - 1) + [self._ohem_forward]

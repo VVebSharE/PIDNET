@@ -16,7 +16,7 @@ from utils.utils import AverageMeter
 from utils.utils import get_confusion_matrix
 from utils.utils import adjust_learning_rate
 
-
+device = torch.device("cuda:4")
 
 def train(config, epoch, num_epoch, epoch_iters, base_lr,
           num_iters, trainloader, optimizer, model, writer_dict):

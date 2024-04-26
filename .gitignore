@@ -1,0 +1,8 @@
+*.pt
+*.pth.tar
+__pycache__/
+*.log
+VineNet.zip
+VineNet/
+*.cheetah
+samples/**/*.png

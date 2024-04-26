@@ -36,49 +36,59 @@ class Cityscapes(BaseDataset):
         self.multi_scale = multi_scale
         self.flip = flip
         
-        self.img_list = [line.strip().split() for line in open(root+list_path)]
+        # self.img_list = [line.strip().split() for line in open(root+list_path)]
 
         self.files = self.read_files()
 
-        self.label_mapping = {-1: ignore_label, 0: ignore_label, 
-                              1: ignore_label, 2: ignore_label, 
-                              3: ignore_label, 4: ignore_label, 
-                              5: ignore_label, 6: ignore_label, 
-                              7: 0, 8: 1, 9: ignore_label, 
-                              10: ignore_label, 11: 2, 12: 3, 
-                              13: 4, 14: ignore_label, 15: ignore_label, 
-                              16: ignore_label, 17: 5, 18: ignore_label, 
-                              19: 6, 20: 7, 21: 8, 22: 9, 23: 10, 24: 11,
-                              25: 12, 26: 13, 27: 14, 28: 15, 
-                              29: ignore_label, 30: ignore_label, 
-                              31: 16, 32: 17, 33: 18}
-        self.class_weights = torch.FloatTensor([0.8373, 0.918, 0.866, 1.0345, 
-                                        1.0166, 0.9969, 0.9754, 1.0489,
-                                        0.8786, 1.0023, 0.9539, 0.9843, 
-                                        1.1116, 0.9037, 1.0865, 1.0955, 
-                                        1.0865, 1.1529, 1.0507]).cuda()
+        self.label_mapping = {0:0,1:128}
+                            #   1: ignore_label, 2: ignore_label, 
+                            #   3: ignore_label, 4: ignore_label, 
+                            #   5: ignore_label, 6: ignore_label, 
+                            #   7: 0, 8: 1, 9: ignore_label, 
+                            #   10: ignore_label, 11: 2, 12: 3, 
+                            #   13: 4, 14: ignore_label, 15: ignore_label, 
+                            #   16: ignore_label, 17: 5, 18: ignore_label, 
+                            #   19: 6, 20: 7, 21: 8, 22: 9, 23: 10, 24: 11,
+                            #   25: 12, 26: 13, 27: 14, 28: 15, 
+                            #   29: ignore_label, 30: ignore_label, 
+                            #   31: 16, 32: 17, 33: 18}
+        self.class_weights = torch.FloatTensor([0.3, 1.3]).cuda()
         
         self.bd_dilate_size = bd_dilate_size
     
     def read_files(self):
+        image_dir = os.path.join(root_dir, 'images')
+        mask_dir = os.path.join(root_dir, 'masks')
+        image_filenames = os.listdir(image_dir)
+
+        val_image_dir = os.path.join(val_root_dir, 'images')
+        val_mask_dir = os.path.join(val_root_dir, 'masks')
+        
+
         files = []
         if 'test' in self.list_path:
-            for item in self.img_list:
-                image_path = item
-                name = os.path.splitext(os.path.basename(image_path[0]))[0]
-                files.append({
-                    "img": image_path[0],
-                    "name": name,
-                })
-        else:
-            for item in self.img_list:
-                image_path, label_path = item
-                name = os.path.splitext(os.path.basename(label_path))[0]
+            root_dir="../Dataset/VineNet"
+            for image_name in image_filenames:
+                image_path = os.path.join(image_dir, image_name)
+                mask_path = os.path.join(mask_dir, image_name.replace('.png', '_instanceIds.png'))
+                name = os.path.splitext(os.path.basename(image_path))[0]
                 files.append({
                     "img": image_path,
-                    "label": label_path,
                     "name": name
                 })
+
+        else:
+            root_dir="../ValDataset/VineNet"
+            for image_name in image_filenames:
+                image_path = os.path.join(image_dir, image_name)
+                mask_path = os.path.join(mask_dir, image_name.replace('.png', '_instanceIds.png'))
+                name = os.path.splitext(os.path.basename(image_path))[0]
+                files.append({
+                    "img": image_path,
+                    "label": mask_path,
+                    "name": name
+                })
+
         return files
         
     def convert_label(self, label, inverse=False):
@@ -94,7 +104,7 @@ class Cityscapes(BaseDataset):
     def __getitem__(self, index):
         item = self.files[index]
         name = item["name"]
-        image = cv2.imread(os.path.join(self.root,'cityscapes',item["img"]),
+        image = cv2.imread(os.path.join(item["img"]),
                            cv2.IMREAD_COLOR)
         size = image.shape
 
@@ -104,8 +114,9 @@ class Cityscapes(BaseDataset):
 
             return image.copy(), np.array(size), name
 
-        label = cv2.imread(os.path.join(self.root,'cityscapes',item["label"]),
+        label = cv2.imread(os.path.join(item["label"]),
                            cv2.IMREAD_GRAYSCALE)
+
         label = self.convert_label(label)
 
         image, label, edge = self.gen_sample(image, label, 
@@ -128,3 +139,17 @@ class Cityscapes(BaseDataset):
 
         
         
+if(__name__=="__main__"):
+    dataset = Cityscapes(root="../data/VineNet", list_path="test.txt")
+    print(len(dataset))
+    i= list(dataset[0])
+    print(i)
+    # for j in i:
+    #     if(j is):
+
+    #         print(j.shape)
+
+    label = dataset[0][1]
+    print(label)
+    label = torch.tensor(label)
+    print("uniq:",torch.unique(label))
